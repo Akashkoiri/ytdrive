@@ -48,7 +48,13 @@ function parseIsoDuration(duration: string): { formatted: string; seconds: numbe
 
 export async function POST(request: Request) {
   const session = await auth();
-  const userId = session?.user?.id || "guest";
+  const userId = session?.user?.id;
+  if (!userId) {
+    return NextResponse.json(
+      { error: "Authentication required to import videos." },
+      { status: 401 }
+    );
+  }
 
   try {
     const body = await request.json();

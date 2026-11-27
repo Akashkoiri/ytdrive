@@ -84,13 +84,22 @@ NEXT_YOUTUBE_API_KEY="your-youtube-api-key"
 
 1. In the [Google Cloud Console](https://console.cloud.google.com/), enable **YouTube Data API v3**.
 2. Create an **OAuth 2.0 Client ID** (Web application).
-3. Add your authorized redirect URI:
+3. Add your authorized redirect URIs:
    - Local development: `http://localhost:3000/api/auth/callback/google`
-4. Configure the OAuth consent screen with the following scopes:
+   - Production (Vercel): `https://your-domain.vercel.app/api/auth/callback/google`
+4. Configure the **OAuth consent screen** with the following scopes:
    - `openid`, `email`, `profile`
    - `https://www.googleapis.com/auth/youtube.upload`
    - `https://www.googleapis.com/auth/youtube.readonly`
    - `https://www.googleapis.com/auth/youtube`
+5. For **Publishing to Public (Google Cloud Verification)**:
+   - **App Name:** `YT Drive`
+   - **Application home page:** `https://your-domain.vercel.app`
+   - **Application privacy policy link:** `https://your-domain.vercel.app/privacy`
+   - **Application terms of service link:** `https://your-domain.vercel.app/terms`
+   - **Authorized domains:** Add your custom domain (if using one; `.vercel.app` may require a custom domain for Google OAuth verification).
+   - **Vercel Deployment Protection:** Keep **Vercel Authentication** disabled for **Production** so public users and Google verification crawlers can access `/`, `/privacy`, and `/terms`.
+   - **Database:** Run `npx prisma db push` against your production database so `youtube_upload_sessions` and all Drive tables exist across serverless invocations.
 
 > **Note:** The connected Google account must have an active YouTube channel (`youtube.com/create_channel`) to upload videos directly to YouTube.
 

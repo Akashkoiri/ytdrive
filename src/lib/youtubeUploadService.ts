@@ -1,4 +1,6 @@
+import type { Prisma } from "@prisma/client";
 import { getUserOAuthTokens, saveUserOAuthTokens } from "@/data/userStore";
+import { isPrismaConfigured, prisma } from "@/lib/prisma";
 
 export type YouTubeUploadErrorCode =
   | "YOUTUBE_CHANNEL_REQUIRED"
@@ -166,8 +168,8 @@ export interface YouTubeUploadSession {
   };
 }
 
-// In-memory active YouTube resumable sessions (persisted on globalThis across dev Fast Refresh)
-// Key: uploadId (uuid/timestamp)
+// In-memory L1 cache / fallback for active YouTube resumable sessions
+// Primary persistence uses PostgreSQL (`youtube_upload_sessions`) so chunks work across serverless instances.
 const globalForUploadSessions = globalThis as unknown as {
   activeSessions?: Map<string, YouTubeUploadSession>;
 };
@@ -176,14 +178,98 @@ const activeSessions =
   new Map<string, YouTubeUploadSession>();
 globalForUploadSessions.activeSessions = activeSessions;
 
+const SESSION_TTL_MS = 4 * 60 * 60 * 1000;
+
+async function saveUploadSession(session: YouTubeUploadSession): Promise<void> {
+  activeSessions.set(session.uploadId, session);
+  if (!isPrismaConfigured) return;
+  try {
+    await prisma.youTubeUploadSession.upsert({
+      where: { uploadId: session.uploadId },
+      create: {
+        uploadId: session.uploadId,
+        uploadUrl: session.uploadUrl,
+        userId: session.userId,
+        fileName: session.fileName,
+        fileSize: BigInt(session.fileSize),
+        mimeType: session.mimeType,
+        chunkSize: session.chunkSize,
+        totalChunks: session.totalChunks,
+        metadata: (session.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
+        createdAt: new Date(session.createdAt),
+      },
+      update: {
+        uploadUrl: session.uploadUrl,
+        metadata: (session.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
+      },
+    });
+  } catch (err) {
+    console.warn("Could not persist YouTube upload session to database:", err);
+  }
+}
+
+async function getUploadSession(
+  uploadId: string
+): Promise<YouTubeUploadSession | null> {
+  const cached = activeSessions.get(uploadId);
+  if (cached) return cached;
+  if (!isPrismaConfigured) return null;
+  try {
+    const row = await prisma.youTubeUploadSession.findUnique({
+      where: { uploadId },
+    });
+    if (!row) return null;
+    const session: YouTubeUploadSession = {
+      uploadId: row.uploadId,
+      uploadUrl: row.uploadUrl,
+      userId: row.userId,
+      fileName: row.fileName,
+      fileSize: Number(row.fileSize),
+      mimeType: row.mimeType,
+      chunkSize: row.chunkSize,
+      totalChunks: row.totalChunks,
+      createdAt: row.createdAt.getTime(),
+      metadata: (row.metadata as YouTubeUploadSession["metadata"]) ?? undefined,
+    };
+    activeSessions.set(uploadId, session);
+    return session;
+  } catch (err) {
+    console.warn("Could not read YouTube upload session from database:", err);
+    return null;
+  }
+}
+
+async function deleteUploadSession(uploadId: string): Promise<void> {
+  activeSessions.delete(uploadId);
+  if (!isPrismaConfigured) return;
+  try {
+    await prisma.youTubeUploadSession.deleteMany({
+      where: { uploadId },
+    });
+  } catch (err) {
+    console.warn("Could not delete YouTube upload session from database:", err);
+  }
+}
+
 // Clean up stale sessions older than 4 hours
-function cleanStaleSessions(): void {
+async function cleanStaleSessions(): Promise<void> {
   const now = Date.now();
-  const FOUR_HOURS = 4 * 60 * 60 * 1000;
   for (const [id, session] of activeSessions.entries()) {
-    if (now - session.createdAt > FOUR_HOURS) {
+    if (now - session.createdAt > SESSION_TTL_MS) {
       activeSessions.delete(id);
     }
+  }
+  if (!isPrismaConfigured) return;
+  try {
+    await prisma.youTubeUploadSession.deleteMany({
+      where: {
+        createdAt: {
+          lt: new Date(now - SESSION_TTL_MS),
+        },
+      },
+    });
+  } catch {
+    // Ignore cleanup errors (e.g. table not yet pushed)
   }
 }
 
@@ -285,7 +371,7 @@ export async function initYouTubeUploadSession(params: {
   chunkSize: number;
   totalChunks: number;
 }> {
-  cleanStaleSessions();
+  await cleanStaleSessions();
 
   const rawTitle = params.metadata?.title || params.fileName;
   const title =
@@ -446,7 +532,7 @@ export async function initYouTubeUploadSession(params: {
     metadata: params.metadata,
   };
 
-  activeSessions.set(uploadId, session);
+  await saveUploadSession(session);
 
   return {
     uploadId,
@@ -461,6 +547,7 @@ export async function initYouTubeUploadSession(params: {
  */
 export async function uploadChunkToYouTube(params: {
   uploadId: string;
+  expectedUserId?: string;
   chunkBuffer: Buffer;
   startByte?: number;
   endByte?: number;
@@ -472,9 +559,16 @@ export async function uploadChunkToYouTube(params: {
   session: YouTubeUploadSession;
   rawResponse?: unknown;
 }> {
-  const session = activeSessions.get(params.uploadId);
+  const session = await getUploadSession(params.uploadId);
   if (!session) {
     throw new Error("Upload session not found or expired. Please restart the upload.");
+  }
+  if (params.expectedUserId && session.userId !== params.expectedUserId) {
+    throw new YouTubeUploadError(
+      "Upload session does not belong to the authenticated user.",
+      "YOUTUBE_FORBIDDEN",
+      403
+    );
   }
 
   // The total byte size expected by YouTube for this video (from initialized session)
@@ -524,8 +618,8 @@ export async function uploadChunkToYouTube(params: {
       throw new Error("YouTube completed upload but did not return a valid video ID.");
     }
 
-    // Clean up session from memory
-    activeSessions.delete(params.uploadId);
+    // Clean up session from cache and database
+    await deleteUploadSession(params.uploadId);
 
     return {
       status: "complete",
@@ -555,9 +649,13 @@ export async function uploadChunkToYouTube(params: {
 /**
  * Abort an active YouTube upload session.
  */
-export async function abortYouTubeUploadSession(uploadId: string): Promise<boolean> {
-  const session = activeSessions.get(uploadId);
+export async function abortYouTubeUploadSession(
+  uploadId: string,
+  expectedUserId?: string
+): Promise<boolean> {
+  const session = await getUploadSession(uploadId);
   if (!session) return false;
+  if (expectedUserId && session.userId !== expectedUserId) return false;
 
   try {
     await fetch(session.uploadUrl, {
@@ -567,7 +665,7 @@ export async function abortYouTubeUploadSession(uploadId: string): Promise<boole
   } catch (err) {
     console.warn("Could not send abort signal to YouTube:", err);
   } finally {
-    activeSessions.delete(uploadId);
+    await deleteUploadSession(uploadId);
   }
 
   return true;

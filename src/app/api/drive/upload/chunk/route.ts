@@ -38,6 +38,15 @@ export async function POST(request: Request) {
     // 1. STREAM BINARY CHUNK TO YOUTUBE RESUMABLE API
     // ------------------------------------------------------------------------
     if (contentType.includes("multipart/form-data")) {
+      const authSession = await auth();
+      const userId = authSession?.user?.id;
+      if (!userId) {
+        return NextResponse.json(
+          { error: "Authentication required", requiresAuth: true },
+          { status: 401 }
+        );
+      }
+
       const formData = await request.formData();
       const uploadId = formData.get("uploadId") as string;
       const chunkIndexRaw = formData.get("chunkIndex") as string | null;
@@ -64,6 +73,7 @@ export async function POST(request: Request) {
       // Stream chunk directly to YouTube - ZERO files written to server disk
       const result = await uploadChunkToYouTube({
         uploadId,
+        expectedUserId: userId,
         chunkBuffer,
         startByte,
         endByte,
@@ -84,7 +94,7 @@ export async function POST(request: Request) {
       const videoId = result.videoId!;
 
       // Register file in Cloud Drive store
-      const effectiveUserId = session.userId || "guest";
+      const effectiveUserId = session.userId || userId;
       const newDriveFile = await addDriveFile(effectiveUserId, {
         name: session.metadata?.title || session.fileName,
         videoId,
@@ -183,9 +193,17 @@ export async function POST(request: Request) {
 
     // B. ABORT / CANCEL
     if (action === "abort") {
+      const authSession = await auth();
+      const userId = authSession?.user?.id;
+      if (!userId) {
+        return NextResponse.json(
+          { error: "Authentication required", requiresAuth: true },
+          { status: 401 }
+        );
+      }
       const { uploadId } = body;
       if (uploadId) {
-        await abortYouTubeUploadSession(uploadId);
+        await abortYouTubeUploadSession(uploadId, userId);
       }
       return NextResponse.json({ success: true, message: "YouTube upload aborted" });
     }

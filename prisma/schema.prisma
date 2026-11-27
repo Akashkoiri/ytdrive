@@ -112,3 +112,20 @@ model UserDrivesJson {
 
   @@map("user_drives_json")
 }
+
+model YouTubeUploadSession {
+  uploadId    String   @id @map("upload_id")
+  uploadUrl   String   @map("upload_url")
+  userId      String   @map("user_id")
+  fileName    String   @map("file_name")
+  fileSize    BigInt   @map("file_size")
+  mimeType    String   @map("mime_type")
+  chunkSize   Int      @map("chunk_size")
+  totalChunks Int      @map("total_chunks")
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId], map: "idx_yt_upload_sessions_user_id")
+  @@index([createdAt], map: "idx_yt_upload_sessions_created_at")
+  @@map("youtube_upload_sessions")
+}

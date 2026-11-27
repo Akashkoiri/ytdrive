@@ -13,6 +13,7 @@ import {
   restoreDriveFiles,
   permanentlyDeleteDriveFiles,
   moveDriveFiles,
+  calculateStorageStats,
 } from "@/data/driveStore";
 import { getValidYouTubeToken } from "@/lib/youtubeUploadService";
 import {
@@ -23,25 +24,42 @@ import {
 } from "@/lib/youtubeSyncService";
 import { getUnifiedUserDrive, UnifiedDrivePayload } from "@/lib/driveServer";
 
+async function requireAuthenticatedSession() {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    throw new Error("Authentication required.");
+  }
+  return { session, userId };
+}
+
 export async function getUnifiedDriveAction(
   forceRefresh = false
 ): Promise<UnifiedDrivePayload> {
   const session = await auth();
-  const userId = session?.user?.id || "guest";
+  const userId = session?.user?.id;
+  if (!userId) {
+    return {
+      userId: "guest",
+      files: [],
+      folders: [],
+      stats: calculateStorageStats([]),
+      source: "local_cache",
+      hasYouTubeChannel: true,
+    };
+  }
   return getUnifiedUserDrive(userId, session, forceRefresh);
 }
 
 export async function toggleStarAction(fileId: string) {
-  const session = await auth();
-  const userId = session?.user?.id || "guest";
+  const { userId } = await requireAuthenticatedSession();
   const updated = await toggleStarFile(userId, fileId);
   revalidatePath("/");
   return { success: true, file: updated };
 }
 
 export async function renameFileAction(fileId: string, newName: string) {
-  const session = await auth();
-  const userId = session?.user?.id || "guest";
+  const { session, userId } = await requireAuthenticatedSession();
   const updated = await updateDriveFile(userId, fileId, { name: newName });
 
   const youtubeToken = await getValidYouTubeToken(userId, session);
@@ -63,8 +81,7 @@ export async function updatePrivacyAction(
   fileId: string,
   privacy: "unlisted" | "private" | "public"
 ): Promise<{ success: boolean; file?: Awaited<ReturnType<typeof updateDriveFile>>; error?: string }> {
-  const session = await auth();
-  const userId = session?.user?.id || "guest";
+  const { session, userId } = await requireAuthenticatedSession();
   const drive = await getUserDrive(userId);
   const existing = drive.files.find((f) => f.id === fileId);
   const videoId =
@@ -97,24 +114,21 @@ export async function moveFilesAction(
   fileIds: string[],
   targetFolderId: string | null
 ) {
-  const session = await auth();
-  const userId = session?.user?.id || "guest";
+  const { userId } = await requireAuthenticatedSession();
   const success = await moveDriveFiles(userId, fileIds, targetFolderId);
   revalidatePath("/");
   return { success };
 }
 
 export async function trashFilesAction(fileIds: string[]) {
-  const session = await auth();
-  const userId = session?.user?.id || "guest";
+  const { userId } = await requireAuthenticatedSession();
   const success = await trashDriveFiles(userId, fileIds);
   revalidatePath("/");
   return { success };
 }
 
 export async function restoreFilesAction(fileIds: string[]) {
-  const session = await auth();
-  const userId = session?.user?.id || "guest";
+  const { userId } = await requireAuthenticatedSession();
   const success = await restoreDriveFiles(userId, fileIds);
   revalidatePath("/");
   return { success };
@@ -124,8 +138,7 @@ export async function deletePermanentlyAction(
   fileIds: string[],
   videoIds: string[] = []
 ) {
-  const session = await auth();
-  const userId = session?.user?.id || "guest";
+  const { session, userId } = await requireAuthenticatedSession();
   const drive = await getUserDrive(userId);
   const toDelete = drive.files.filter((f) => fileIds.includes(f.id));
 
@@ -160,8 +173,7 @@ export async function deletePermanentlyAction(
 }
 
 export async function createFolderAction(name: string, color = "blue") {
-  const session = await auth();
-  const userId = session?.user?.id || "guest";
+  const { userId } = await requireAuthenticatedSession();
   const folder = await addDriveFolder(userId, {
     name,
     color,
@@ -172,16 +184,14 @@ export async function createFolderAction(name: string, color = "blue") {
 }
 
 export async function renameFolderAction(folderId: string, newName: string) {
-  const session = await auth();
-  const userId = session?.user?.id || "guest";
+  const { userId } = await requireAuthenticatedSession();
   const updated = await renameDriveFolder(userId, folderId, newName);
   revalidatePath("/");
   return { success: true, folder: updated };
 }
 
 export async function deleteFolderAction(folderId: string) {
-  const session = await auth();
-  const userId = session?.user?.id || "guest";
+  const { userId } = await requireAuthenticatedSession();
   const deleted = await deleteDriveFolder(userId, folderId);
   revalidatePath("/");
   return { success: deleted };

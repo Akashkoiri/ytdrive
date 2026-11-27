@@ -29,46 +29,56 @@ if (process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET) {
   );
 }
 
-// 2. Credentials Provider (registered user accounts)
-providers.push(
-  Credentials({
-    name: "Credentials",
-    credentials: {
-      email: { label: "Email", type: "email" },
-      password: { label: "Password", type: "password" },
-    },
-    async authorize(credentials) {
-      if (!credentials) return null;
+// 2. Credentials Provider (development/demo only — disabled in public production unless explicitly opted in)
+if (
+  process.env.NODE_ENV !== "production" ||
+  process.env.ENABLE_DEMO_AUTH === "true"
+) {
+  providers.push(
+    Credentials({
+      name: "Credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        if (!credentials) return null;
 
-      const email = credentials.email as string | undefined;
-      const password = credentials.password as string | undefined;
+        const email = credentials.email as string | undefined;
+        const password = credentials.password as string | undefined;
 
-      if (!email || !password) {
-        return null;
-      }
+        if (!email || !password) {
+          return null;
+        }
 
-      const user = await getUserByEmail(email);
-      if (!user) {
-        return null;
-      }
+        const user = await getUserByEmail(email);
+        if (!user) {
+          return null;
+        }
 
-      if (user.password && user.password !== password) {
-        return null;
-      }
+        if (user.password && user.password !== password) {
+          return null;
+        }
 
-      return {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        image: user.image,
-      };
-    },
-  })
-);
+        return {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          image: user.image,
+        };
+      },
+    })
+  );
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers,
-  secret: process.env.AUTH_SECRET || "ytdrive-super-secret-key-2026",
+  trustHost: true,
+  secret:
+    process.env.AUTH_SECRET ||
+    (process.env.NODE_ENV === "production"
+      ? undefined
+      : "ytdrive-dev-secret-key"),
   session: {
     strategy: "jwt",
   },

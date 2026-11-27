@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useId } from "react";
+import Link from "next/link";
 import { signIn, signOut } from "next-auth/react";
 import { X, ShieldCheck } from "lucide-react";
 import { useAuthContent } from "@/context/AuthContentContext";
@@ -113,6 +114,26 @@ export default function AuthModal() {
             </>
           )}
         </button>
+
+        <p className="mt-4 text-center text-[11px] text-[var(--text-muted)] leading-relaxed">
+          By continuing, you agree to the{" "}
+          <Link
+            href="/terms"
+            onClick={closeAuthModal}
+            className="text-[var(--text-primary)] underline underline-offset-2 hover:opacity-80"
+          >
+            Terms of Service
+          </Link>{" "}
+          and{" "}
+          <Link
+            href="/privacy"
+            onClick={closeAuthModal}
+            className="text-[var(--text-primary)] underline underline-offset-2 hover:opacity-80"
+          >
+            Privacy Policy
+          </Link>
+          .
+        </p>
       </div>
     </ModalDialog>
   );

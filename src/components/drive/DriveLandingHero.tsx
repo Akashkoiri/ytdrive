@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import Logo from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
 import AnimatedStudioBackdrop from "@/components/ui/AnimatedStudioBackdrop";
@@ -800,6 +801,38 @@ export default function DriveLandingHero({
           </section>
         </div>
       </main>
+
+      {/* Public Policy & Google OAuth Verification Footer */}
+      <footer className="relative z-10 border-t border-[var(--border-hairline)] bg-[var(--bg-surface)]/75 backdrop-blur-xl py-5 px-4 sm:px-8">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[var(--text-muted)]">
+          <p className="text-center sm:text-left">
+            <span className="font-semibold text-[var(--text-primary)]">YT Drive</span>{" "}
+            &bull; Uses Google OAuth &amp; YouTube API Services.
+          </p>
+          <nav aria-label="Footer legal links" className="flex flex-wrap items-center justify-center gap-4">
+            <Link
+              href="/privacy"
+              className="hover:text-[var(--text-primary)] underline-offset-4 hover:underline transition-colors"
+            >
+              Privacy Policy
+            </Link>
+            <Link
+              href="/terms"
+              className="hover:text-[var(--text-primary)] underline-offset-4 hover:underline transition-colors"
+            >
+              Terms of Service
+            </Link>
+            <a
+              href="https://www.youtube.com/t/terms"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-[var(--text-primary)] underline-offset-4 hover:underline transition-colors"
+            >
+              YouTube Terms of Service
+            </a>
+          </nav>
+        </div>
+      </footer>
     </div>
   );
 }
