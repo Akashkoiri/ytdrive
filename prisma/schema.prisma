@@ -1,0 +1,114 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                   String         @id
+  email                String         @unique
+  name                 String?
+  image                String?
+  password             String?
+  googleAccessToken    String?        @map("google_access_token")
+  googleRefreshToken   String?        @map("google_refresh_token")
+  googleTokenExpiresAt BigInt?        @map("google_token_expires_at")
+  googleScope          String?        @map("google_scope")
+  createdAt            DateTime       @default(now()) @map("created_at")
+  likedVideos          LikedVideo[]
+  savedVideos          SavedVideo[]
+  watchHistory         WatchHistory[]
+
+  @@map("profiles")
+}
+
+model SavedVideo {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  videoId   String   @map("video_id")
+  videoData Json     @map("video_data")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, videoId], name: "unique_user_saved_video")
+  @@index([userId])
+  @@map("user_saved_videos")
+}
+
+model LikedVideo {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  videoId   String   @map("video_id")
+  videoData Json     @map("video_data")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, videoId], name: "unique_user_liked_video")
+  @@index([userId])
+  @@map("user_liked_videos")
+}
+
+model WatchHistory {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  videoId   String   @map("video_id")
+  videoData Json     @map("video_data")
+  watchedAt DateTime @default(now()) @map("watched_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([watchedAt])
+  @@map("user_watch_history")
+}
+
+model DriveFile {
+  id              String    @id
+  userId          String    @map("user_id")
+  name            String
+  videoId         String?   @map("video_id")
+  youtubeUrl      String?   @map("youtube_url")
+  fileUrl         String?   @map("file_url")
+  size            BigInt?   @default(0)
+  duration        String?   @default("0:00")
+  durationSeconds Int?      @default(0) @map("duration_seconds")
+  resolution      String?   @default("1080p")
+  mimeType        String?   @default("video/mp4") @map("mime_type")
+  thumbnailUrl    String?   @map("thumbnail_url")
+  folderId        String?   @map("folder_id")
+  privacy         String?   @default("unlisted")
+  starred         Boolean?  @default(false)
+  trashed         Boolean?  @default(false)
+  trashedAt       DateTime? @map("trashed_at") @db.Timestamptz(6)
+  tags            String[]  @default([])
+  description     String?   @default("")
+  backendStorage  String?   @default("youtube_cloud") @map("backend_storage")
+  createdAt       DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([folderId], map: "idx_drive_files_folder_id")
+  @@index([userId], map: "idx_drive_files_user_id")
+  @@map("drive_files")
+}
+
+model DriveFolder {
+  id        String    @id
+  userId    String    @map("user_id")
+  name      String
+  color     String?   @default("blue")
+  parentId  String?   @map("parent_id")
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId], map: "idx_drive_folders_user_id")
+  @@map("drive_folders")
+}
+
+model UserDrivesJson {
+  userId    String    @id @map("user_id")
+  driveData Json      @map("drive_data")
+  updatedAt DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("user_drives_json")
+}
