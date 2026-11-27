@@ -1,7 +1,6 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
-import GitHub from "next-auth/providers/github";
 import {
   getUserByEmail,
   getUserOAuthTokens,
@@ -30,17 +29,7 @@ if (process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET) {
   );
 }
 
-// 2. GitHub OAuth Provider (activated when credentials are supplied in .env)
-if (process.env.AUTH_GITHUB_ID && process.env.AUTH_GITHUB_SECRET) {
-  providers.push(
-    GitHub({
-      clientId: process.env.AUTH_GITHUB_ID,
-      clientSecret: process.env.AUTH_GITHUB_SECRET,
-    })
-  );
-}
-
-// 3. Credentials Provider (registered user accounts)
+// 2. Credentials Provider (registered user accounts)
 providers.push(
   Credentials({
     name: "Credentials",
@@ -79,13 +68,13 @@ providers.push(
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers,
-  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "ytdrive-super-secret-key-2026",
+  secret: process.env.AUTH_SECRET || "ytdrive-super-secret-key-2026",
   session: {
     strategy: "jwt",
   },
   callbacks: {
     async signIn({ user, account }) {
-      if (account?.provider === "google" || account?.provider === "github") {
+      if (account?.provider === "google") {
         const storedUser = await registerOrGetOAuthUser({
           id: user.id,
           name: user.name,
